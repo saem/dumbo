@@ -1,8 +1,5 @@
 package com.github.saem.dumbo
 
-typealias FnName = String
-typealias ParamName = String
-
 sealed class AstNode (open val cost: Int = 0) {
     object EmptyProgram : AstNode()
 
@@ -13,18 +10,18 @@ sealed class AstNode (open val cost: Int = 0) {
 
             companion object {
                 fun fromBool(boolean: Boolean) = when (boolean) {
-                    true -> Literal.True
-                    false -> Literal.False
+                    true -> True
+                    false -> False
                 }
             }
         }
 
         sealed class Operation(override val cost: Int = 10) : Expression() {
-            sealed class Binary() : Operation() {
+            sealed class Binary : Operation() {
                 data class And(val left: Expression, val right: Expression) : Binary()
                 data class Or(val left: Expression, val right: Expression) : Binary()
             }
-            sealed class Unary() : Operation() {
+            sealed class Unary : Operation() {
                 data class Not(val right: Expression) : Unary()
             }
         }

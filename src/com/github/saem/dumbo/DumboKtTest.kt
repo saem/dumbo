@@ -7,7 +7,6 @@ import io.kotlintest.properties.Gen
 import io.kotlintest.properties.forAll
 import io.kotlintest.shouldBe
 import io.kotlintest.specs.FreeSpec
-import io.kotlintest.specs.StringSpec
 
 val emptyProgram = AstNode.EmptyProgram
 
