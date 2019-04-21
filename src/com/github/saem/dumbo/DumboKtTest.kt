@@ -154,9 +154,9 @@ internal class DumboKtTest : FreeSpec() {
         }
 
         "# Expressions - Any non-empty program" - {
-            "Are valid as long as the cost is non-negative" {
+            "Are valid as long as the cost is greater than 0" {
                 forAll(ExpressionGen()) {
-                    programCost(it) >= 0
+                    programCost(it) > 0
                 }
             }
         }
