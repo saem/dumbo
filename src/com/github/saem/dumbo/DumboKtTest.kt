@@ -59,194 +59,109 @@ val StandardExpressions = StandardLiterals +
 
 val StandardPrograms = listOf(emptyProgram) + StandardExpressions
 
-class ProgramGen : Gen<Program> {
-    override fun constants() = StandardPrograms
-
-    override fun random() = ExpressionGen().random()
+fun literalGen() = object : Gen<Literal> by (Gen.bool().map { Literal.fromBool(it) }) {
+    override fun constants(): Iterable<Literal> = StandardLiterals
 }
 
-class AstGen : Gen<Ast> {
-    private val astWithoutCostConstraint = AstWithoutCostConstraintGen()
-    private val astWithCostConstraint = AstWithCostConstraintGen()
+fun expressionGen() = object : Gen<Expression> {
+    private val literal = literalGen().random().iterator()
 
-    override fun constants() = astWithoutCostConstraint.constants() +
-            astWithCostConstraint.constants()
-    override fun random(): Sequence<Ast> =
-        Gen.oneOf(astWithoutCostConstraint,
-            astWithCostConstraint).random()
-}
-
-class AstValidGen : Gen<Ast> {
-    private val astWithoutCostConstraint = AstWithoutCostConstraintGen()
-    private val astPassCostGen = AstWithCostConstraintPassGen()
-
-    override fun constants() = astWithoutCostConstraint.constants() +
-            astPassCostGen.constants()
-    override fun random(): Sequence<Ast> =
-        Gen.oneOf(astWithoutCostConstraint,
-            astPassCostGen).random()
-}
-
-/**
- * Convenience class, delegates entirely to expression generation.
- */
-class AstWithoutCostConstraintGen : Gen<Ast> {
-    private val expressionGen = ExpressionGen()
-    override fun constants() = expressionGen.constants()
-    override fun random() = expressionGen.random()
-}
-
-class AstWithCostConstraintGen : Gen<Ast> {
-    private val astFailCostGen = AstWithCostConstraintFailGen()
-    private val astPassCostGen = AstWithCostConstraintPassGen()
-    override fun constants() = astFailCostGen.constants() +
-            astPassCostGen.constants()
-    override fun random() = Gen.oneOf(astFailCostGen, astPassCostGen).random()
-}
-
-class AstWithCostConstraintPassGen : Gen<Constraint.CostConstraint> {
-    override fun constants(): Iterable<Constraint.CostConstraint> =
-        // Always passes, cost is the same
-        StandardExpressions.map {
-            Constraint.CostConstraint(it, programCost(it))
-        } +
-                // Always passes, cost is always larger
-                StandardExpressions.map {
-                    Constraint.CostConstraint(it, programCost(it) + 1)
-                }
-
-    override fun random(): Sequence<Constraint.CostConstraint> =
-        ExpressionGen().map { expression ->
-            val expressionCost = programCost(expression)
-
-            // Get a positive, random number, near the program cost
-            Gen.choose(
-                expressionCost,
-                expressionCost + 10
-            )
-                .random().first()
-                .let {
-
-                    // Some will pass, some will fail
-                    Constraint.CostConstraint(expression, it)
-                }
-        }.random()
-}
-
-class AstWithCostConstraintFailGen : Gen<Constraint.CostConstraint> {
-    override fun constants(): Iterable<Constraint.CostConstraint> =
-        // Always fails, cost is always smaller
-        StandardExpressions.map {
-            Constraint.CostConstraint(it, programCost(it) - 1)
-        } +
-                // Always fails, only non-[EmptyProgram] should be 0 cost
-                StandardExpressions.map {
-                    Constraint.CostConstraint(it, 0)
-                }
-
-    override fun random(): Sequence<Constraint.CostConstraint> =
-        ExpressionGen().map { expression ->
-            val expressionCost = programCost(expression)
-
-            // Get a positive, random number, inside the program cost
-            Gen.choose(
-                maxOf(0, expressionCost - 10),
-                expressionCost // (upper end is exclusive)
-            )
-                .random().first()
-                .let {
-
-                    // All will fail
-                    Constraint.CostConstraint(expression, it)
-                }
-        }.random()
-}
-
-const val MIN_EXPRESSION_SIZE: Int = 1
-const val SOFT_MAX_EXPRESSION_SIZE: Int = 1_000
-
-class ExpressionGen : Gen<Expression> {
-    override fun constants() = StandardExpressions
-
+    override fun constants(): Iterable<Expression> = StandardExpressions
     override fun random(): Sequence<Expression> =
-        ExpressionGenWithLimit(
-            Gen.choose(MIN_EXPRESSION_SIZE, SOFT_MAX_EXPRESSION_SIZE)
-                .random()
-                .first()
-        ).random()
+        Gen.choose(
+            1,
+            SOFT_MAX_EXPRESSION_SIZE + 1 // upper end is exclusive
+        )
+            .map { sizedExpression(it) }.random()
 
-    inner class ExpressionGenWithLimit(
-        private val softLimit: Int
-    ) : Gen<Expression> {
-        private val literalGen = LiteralGen()
-        private val unaryGen = OperationUnaryGen(this)
-        private val binaryGen = OperationBinaryGen(this)
+    fun sizedExpression(size: Int): Expression = when (size) {
+        1 -> literal.next()
+        2 -> Operation.Unary.Not(sizedExpression(size - 1))
+        else -> Gen.choose(
+            1,
+            size // upper end is exclusive, don't need to subtract 1
+        )
+            .map {
+                val leftSize = it
+                val rightSize = size - leftSize
 
-        private var currentSize = 0
+                val leftSideExpression = sizedExpression(leftSize)
+                val rightSideExpression = sizedExpression(rightSize)
 
-        override fun constants() = emptyList<Expression>()
-
-        override fun random(): Sequence<Expression> = when (currentSize < softLimit) {
-            true -> currentSize++.let { Gen.oneOf(literalGen, unaryGen, binaryGen) }
-            else -> literalGen
-        }.random()
+                Gen.from(
+                    listOf(
+                        Operation.Binary.And(leftSideExpression, rightSideExpression),
+                        Operation.Binary.Or(leftSideExpression, rightSideExpression)
+                    )
+                ).random().first()
+            }.random().first()
     }
+}
 
-    class LiteralGen : Gen<Literal> {
-        override fun constants() = StandardLiterals
-        override fun random() = Gen.bool().map { Literal.fromBool(it) }.random()
-    }
+fun validProgramGen(): Gen<Program> = object : Gen<Program> by Gen.oneOf(astValidGen()) {
+    override fun constants(): Iterable<Program> = StandardPrograms
+}
 
-    class OperationUnaryGen(
-        private val expressionGen: Gen<Expression>
-    ) : Gen<Operation.Unary> {
-        override fun constants() = listOf(
-            Operation.Unary.Not(Literal.True),
-            Operation.Unary.Not(Literal.False)
+fun astGen(): Gen<Ast> = Gen.oneOf(astValidGen(), astInvalidGen())
+
+fun astValidGen(): Gen<Ast> = Gen.oneOf(
+    astWithoutCostConstraintGen(),
+    astWithCostConstraintValidGen()
+)
+
+fun astInvalidGen(): Gen<Ast> = Gen.oneOf(astWithCostConstraintInvalidGen())
+
+fun astWithoutCostConstraintGen(): Gen<Expression> = expressionGen()
+
+fun astWithCostConstraintValidGen() : Gen<Constraint.CostConstraint> = Gen.oneOf(
+    astWithCostConstraintExactValidGen(),
+    astBelowCostConstraintValidGen()
+)
+
+fun astWithCostConstraintExactValidGen() : Gen<Constraint.CostConstraint> =
+        astWithoutCostConstraintGen().map { Constraint.CostConstraint(it, programCost(it)) }
+
+fun astBelowCostConstraintValidGen() : Gen<Constraint.CostConstraint> =
+        Gen.bind(
+            Gen.choose(1, 10),
+            astWithoutCostConstraintGen()
+        ) { programCostSurplus, expression ->
+            Constraint.CostConstraint(
+                expression,
+                programCost(expression) + programCostSurplus
+            )
+        }
+
+
+fun astWithCostConstraintInvalidGen(): Gen<Constraint.CostConstraint> =
+        Gen.oneOf(
+            astOneBelowCostConstraintInvalidGen(),
+            astBelowCostConstraintInvalidGen()
         )
 
-        override fun random(): Sequence<Operation.Unary> =
-            expressionGen.map { Operation.Unary.Not(it) }.random()
-    }
+fun astOneBelowCostConstraintInvalidGen() : Gen<Constraint.CostConstraint> =
+        expressionGen().map { Constraint.CostConstraint(it, programCost(it) - 1) }
 
-    class OperationBinaryGen(
-        private val expressionGen: Gen<Expression>
-    ) : Gen<Operation.Binary> {
-        override fun constants() = emptyList<Operation.Binary>()
+fun astBelowCostConstraintInvalidGen() : Gen<Constraint.CostConstraint> =
+        expressionGen().map {
+            val expressionCost = programCost(it)
+            val minCostDeficit = minOf(2, expressionCost)
+            val maxCostDeficit = maxOf(minCostDeficit, expressionCost) + 1 // [Gen.choose]'s second param is exclusive
 
-        override fun random(): Sequence<Operation.Binary> =
-            Gen.oneOf(
-                OperationBinaryAndGen(expressionGen),
-                OperationBinaryOrGen(expressionGen)
-            ).random()
-    }
+            val deficit = Gen.choose(
+                minCostDeficit,
+                maxCostDeficit
+            ).random().first()
 
-    class OperationBinaryAndGen(
-        private val expressionGen: Gen<Expression>
-    ) : Gen<Operation.Binary.And> {
-        override fun constants() = StandardAndExpressions
-        override fun random(): Sequence<Operation.Binary.And> =
-            Gen.bind(expressionGen, expressionGen)
-            { a, b -> Operation.Binary.And(a, b) }
-                .random()
-    }
+            Constraint.CostConstraint(it, deficit)
+        }
 
-    class OperationBinaryOrGen(
-        private val expressionGen: Gen<Expression>
-    ) : Gen<Operation.Binary.Or> {
-        override fun constants() = StandardOrExpressions
-        override fun random(): Sequence<Operation.Binary.Or> =
-            Gen.bind(expressionGen, expressionGen)
-            { a, b -> Operation.Binary.Or(a, b) }
-                .random()
-    }
-
-}
+const val SOFT_MAX_EXPRESSION_SIZE: Int = 1_000
 
 internal class DumboKtTest : FreeSpec() {
     init {
         "Validate programs" {
-            forAll(ProgramGen()) { ast: Program -> validate(ast) }
+            forAll(validProgramGen()) { ast: Program -> validate(ast) }
         }
 
         "# Empty Programs" - {
@@ -261,13 +176,13 @@ internal class DumboKtTest : FreeSpec() {
 
         "# Any non-empty program" - {
             "Cost constraints are optional" {
-                forAll(AstWithoutCostConstraintGen()) {
+                forAll(Gen.oneOf<Program>(astWithoutCostConstraintGen())) {
                     validate(it) && it !is Constraint.CostConstraint
                 }
             }
 
             "Can be valid or invalid" {
-                forAll(AstGen()) {
+                forAll(astGen()) {
                     val valid = validate(it)
                     when {
                         it is Constraint.CostConstraint && valid -> programCost(it) <= it.maximumCost
@@ -281,13 +196,13 @@ internal class DumboKtTest : FreeSpec() {
             }
 
             "Without cost constraint is valid" {
-                forAll(AstWithoutCostConstraintGen()) {
+                forAll(astWithoutCostConstraintGen()) {
                     validate(it) && programCost(it) > 0
                 }
             }
 
             "A program must be within or equal to it's cost constraint" {
-                forAll(AstWithCostConstraintPassGen()) {
+                forAll(astWithCostConstraintValidGen()) {
                     validate(it) &&
                             programCost(it) <= it.maximumCost
                 }

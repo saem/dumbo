@@ -21,8 +21,7 @@ package com.github.saem.dumbo
  *
  * ## Current Topic of Exploration
  *
- * There is a "cost" associated to each operation and the compiler can book keep
- * that for the programmer.
+ * Variables, allow the user to declare variables
  *
  * ## Future Exploration:
  *
@@ -42,6 +41,16 @@ package com.github.saem.dumbo
  *
  * ### Pluggable Costing Models
  * - Not all machines are the same, and so costs need to be rethought
+ *
+ * ## Previously Explored Topics
+ *
+ * These are for reference. They're not 'done', merely not worth pursuing
+ * without more features being baked into the language itself.
+ *
+ * ### Operation Cost Book Keeping
+ *
+ * There is a "cost" associated to each operation and the compiler can book keep
+ * that for the programmer.
  */
 sealed class Program {
     /**
@@ -67,7 +76,7 @@ sealed class Program {
                     init {
                         if (maximumCost < 0) {
                             throw RuntimeException(
-                                "CostConstraint require a non-negative value")
+                                "CostConstraint requires a non-negative value")
                         }
                     }
                 }
