@@ -10,5 +10,7 @@
     <orderEntry type="library" name="KotlinJavaRuntime" level="project" />
     <orderEntry type="library" name="org.junit.jupiter:junit-jupiter:5.4.2" level="project" />
     <orderEntry type="library" name="io.kotlintest:kotlintest-runner-junit5:3.3.2" level="project" />
+    <orderEntry type="library" name="io.arrow-kt:arrow-core-data:0.9.0" level="project" />
+    <orderEntry type="library" name="io.arrow-kt:arrow-core-extensions:0.9.0" level="project" />
   </component>
 </module>
